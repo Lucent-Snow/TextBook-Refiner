@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     modelscope_embedding_model: str = "Qwen/Qwen3-Embedding-8B"
 
     # PDF parsing
-    pdf_parse_provider: str = "auto"  # auto, pymupdf, mineru
+    pdf_parse_provider: str = "pymupdf"  # auto, pymupdf, mineru
     pdf_min_cjk_ratio: float = 0.2
     pdf_max_replacement_ratio: float = 0.01
 

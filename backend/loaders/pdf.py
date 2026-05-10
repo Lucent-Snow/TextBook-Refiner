@@ -8,7 +8,6 @@ import re
 
 from backend.core.config import settings
 from backend.loaders.base import ChapterHeading, Document, Page
-from backend.loaders.mineru_client import parse_pdf_with_mineru
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +32,19 @@ def load_pdf(filepath: str | Path) -> Document:
     if provider == "pymupdf" or _is_text_quality_acceptable(document.full_text):
         return document
 
-    logger.warning(
-        "PyMuPDF text quality is low, falling back to MinerU",
-        extra={
-            "file_type": "pdf",
-            "byte_size": filepath.stat().st_size,
-            "char_count": document.char_count,
-        },
-    )
-    return _load_pdf_with_mineru(filepath)
+    try:
+        logger.warning(
+            "PyMuPDF text quality is low, falling back to MinerU",
+            extra={
+                "file_type": "pdf",
+                "byte_size": filepath.stat().st_size,
+                "char_count": document.char_count,
+            },
+        )
+        return _load_pdf_with_mineru(filepath)
+    except ImportError:
+        logger.warning("MinerU not available, returning PyMuPDF result despite low quality")
+        return document
 
 
 def _load_pdf_with_pymupdf(filepath: Path) -> Document:
@@ -100,6 +103,13 @@ def _load_pdf_with_pymupdf(filepath: Path) -> Document:
 
 
 def _load_pdf_with_mineru(filepath: Path) -> Document:
+    try:
+        from backend.loaders.mineru_client import parse_pdf_with_mineru
+    except ImportError:
+        raise ImportError(
+            "mineru_client is not available. "
+            "Ensure backend/loaders/mineru_client.py exists and is committed."
+        )
     result = parse_pdf_with_mineru(filepath)
     return _load_mineru_markdown(result.markdown_path, filename=filepath.name)
 
