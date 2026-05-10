@@ -45,7 +45,7 @@ export default function ReportPage({
       const newReport = await api.generateReport(projectId);
       setReport(newReport);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      setError(err instanceof Error ? err.message : "报告生成失败");
     } finally {
       setGenerating(false);
     }
@@ -66,19 +66,19 @@ export default function ReportPage({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="h-6 w-6 text-blue-600" />
-            <h1 className="text-2xl font-bold">Integration Report</h1>
+            <h1 className="text-2xl font-bold text-slate-900">整合报告</h1>
           </div>
           <div className="flex gap-2">
             <Button onClick={handleGenerate} disabled={generating}>
               {generating ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
-              {report ? "Regenerate" : "Generate Report"}
+              {report ? "重新生成" : "生成报告"}
             </Button>
             {report && (
               <Button variant="outline">
                 <Download className="h-4 w-4 mr-2" />
-                Export
+                导出
               </Button>
             )}
           </div>
@@ -94,10 +94,9 @@ export default function ReportPage({
           <Card>
             <CardContent className="py-12 text-center text-zinc-500">
               <FileText className="h-12 w-12 mx-auto mb-4 text-zinc-300" />
-              <p>No report generated yet.</p>
+              <p>暂无报告</p>
               <p className="text-sm mt-1">
-                Click &quot;Generate Report&quot; to create the integration
-                report and compressed essence.
+                点击"生成报告"创建整合报告和压缩精华内容
               </p>
             </CardContent>
           </Card>
@@ -108,24 +107,24 @@ export default function ReportPage({
             {/* Compression Stats */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Compression Summary</CardTitle>
+                <CardTitle className="text-lg">压缩概况</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
                   <div>
-                    <p className="text-sm text-zinc-500">Compression Ratio</p>
+                    <p className="text-sm text-zinc-500">压缩率</p>
                     <p className="text-2xl font-bold">
                       {(report.compressionRatio * 100).toFixed(1)}%
                     </p>
                   </div>
                   <Separator orientation="vertical" className="h-12" />
                   <div>
-                    <p className="text-sm text-zinc-500">Target</p>
+                    <p className="text-sm text-zinc-500">目标</p>
                     <p className="text-2xl font-bold">30%</p>
                   </div>
                   <Separator orientation="vertical" className="h-12" />
                   <div>
-                    <p className="text-sm text-zinc-500">Status</p>
+                    <p className="text-sm text-zinc-500">状态</p>
                     <Badge
                       variant={
                         report.compressionRatio <= 0.3
@@ -133,7 +132,7 @@ export default function ReportPage({
                           : "secondary"
                       }
                     >
-                      {report.compressionRatio <= 0.3 ? "On Target" : "Above Target"}
+                      {report.compressionRatio <= 0.3 ? "已达标" : "超目标"}
                     </Badge>
                   </div>
                 </div>
@@ -143,7 +142,7 @@ export default function ReportPage({
             {/* Teaching Flow */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Teaching Flow</CardTitle>
+                <CardTitle className="text-lg">教学流程</CardTitle>
               </CardHeader>
               <CardContent>
                 {report.teachingFlow.length > 0 ? (
@@ -161,7 +160,7 @@ export default function ReportPage({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-zinc-500">No teaching flow generated yet.</p>
+                  <p className="text-sm text-zinc-500">尚未生成教学流程</p>
                 )}
               </CardContent>
             </Card>
@@ -169,7 +168,7 @@ export default function ReportPage({
             {/* Essence Content */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Compressed Essence</CardTitle>
+                <CardTitle className="text-lg">压缩精华</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap">
@@ -182,7 +181,7 @@ export default function ReportPage({
             {Object.keys(report.decisionsSummary).length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Integration Decisions Summary</CardTitle>
+                  <CardTitle className="text-lg">整合决策汇总</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">

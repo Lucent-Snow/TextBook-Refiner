@@ -95,7 +95,9 @@ def _parse_by_type(material: Material, content: bytes):
         loader = loader_map.get(material.file_type)
         if not loader:
             raise ValueError(f"No loader for {material.file_type}")
-        return loader(tmp_path)
+        document = loader(tmp_path)
+        document.filename = material.filename
+        return document
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

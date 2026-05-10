@@ -101,6 +101,23 @@ app.include_router(ask.router)
 app.include_router(report.router)
 
 
+@app.on_event("startup")
+async def on_startup():
+    """Seed demo project with pre-loaded textbooks on first run."""
+    try:
+        from backend.seed_data import seed_demo_project
+
+        result = seed_demo_project()
+        if result:
+            logger.info(
+                "Demo project seeded: %s (%s)",
+                result["name"],
+                result["id"],
+            )
+    except Exception:
+        logger.exception("Failed to seed demo project")
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "version": "0.1.0"}

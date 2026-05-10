@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TextBook Refiner",
+  title: "智汇教材",
   description:
-    "Knowledge Integration Agent for textbook knowledge graph construction and cross-textbook integration",
+    "知识整合智能体 — 多教材知识图谱构建、跨书整合、压缩精华生成",
 };
 
 export default function RootLayout({
