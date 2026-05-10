@@ -118,6 +118,27 @@ async def _execute_tool_calls(project_id: str, tool_calls: list[dict]) -> list[d
                 payload = await reject_decision(project_id, args.get("decision_id", ""), {"reason": args.get("reason", "")})
             elif name == "search_chunks":
                 payload = {"results": await search_chunks(project_id, args.get("query", ""), args.get("top_k", 5))}
+            elif name == "get_node_evidence":
+                node = store.get_node(args.get("node_id", ""))
+                if not node:
+                    payload = {"error": "Node not found"}
+                else:
+                    payload = {
+                        "node": node,
+                        "source_chunk_ids": node.get("sources", []),
+                    }
+            elif name == "answer_with_citations":
+                payload = {
+                    "answer": args.get("answer", ""),
+                    "citations": args.get("citations", []),
+                }
+            elif name == "revise_decision":
+                payload = _revise_decision(
+                    project_id,
+                    decision_id=args.get("decision_id", ""),
+                    revised_operation=args.get("revised_operation", {}),
+                    reason=args.get("reason", ""),
+                )
             else:
                 payload = {"error": f"Unsupported tool: {name}"}
         except HTTPException as exc:
@@ -127,6 +148,29 @@ async def _execute_tool_calls(project_id: str, tool_calls: list[dict]) -> list[d
         results.append({"toolCallId": call.get("id"), "name": name, "result": payload})
 
     return results
+
+
+def _revise_decision(
+    project_id: str,
+    decision_id: str,
+    revised_operation: dict,
+    reason: str,
+) -> dict:
+    """Revise an integration decision without applying it."""
+    from backend.api.decisions import get_project_decisions
+    from backend.models.decision import DecisionStatus
+
+    decision = get_project_decisions(project_id).get(decision_id)
+    if decision is None:
+        return {"error": "Decision not found", "revised": False}
+    decision.suggested_operation = revised_operation
+    decision.reason = reason or decision.reason
+    decision.status = DecisionStatus.REVISED
+    return {
+        "revised": True,
+        "decisionId": decision_id,
+        "suggestedOperation": revised_operation,
+    }
 
 
 def _summarize_tool_results(tool_results: list[dict]) -> str:

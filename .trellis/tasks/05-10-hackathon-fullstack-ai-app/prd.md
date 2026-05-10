@@ -91,6 +91,74 @@ Design a fast, reliable, product-grade full-stack architecture and development w
 * Committing real API keys or embedding them in source files.
 * Prebuilding/caching final graph or RAG artifacts before user-supplied ingestion.
 
+## Implementation Status (2026-05-10)
+
+Skeleton has been generated locally (uncommitted in `backend/` + `frontend/`). The brainstorm-phase scope is now mostly real code, though only one stub remains in the backend and the frontend has one empty directory.
+
+### Backend — substantially implemented
+
+| Area | Status | Notes |
+|------|--------|-------|
+| FastAPI app, CORS, request logging, global exception handler | ✓ | `backend/main.py` registers all 8 routers + `/api/health`. |
+| `core/config.py` env-driven settings | ✓ | `DEEPSEEK_*`, `MODELSCOPE_*`, `CHROMA_*`, `DATA_ROOT` all wired. |
+| `core/model_clients.py` DeepSeek + ModelScope clients | ✓ | Primary→fallback (no retry), `requires_review` tagging, streaming variant, structured logging. |
+| `core/storage.py` filesystem helpers | ✓ | Path-traversal guarded, project-dir scaffolding, JSON/JSONL helpers. |
+| `core/jobs.py` BuildJob state machine | ✓ | 7 stages, in-memory store. |
+| `api/projects.py` create/list/get | ✓ | In-memory + JSON-disk persistence. |
+| `api/materials.py` upload + auto-parse on upload | ✓ | Dispatches to `loaders/*` by extension. |
+| `api/build.py` orchestrated build + WebSocket progress | ✓ | KG and RAG run in parallel via `asyncio.gather`; per-stage failure → `PARTIAL`. |
+| `api/graph.py` graph fetch + WebSocket push | ✓ | `_schedule_broadcast` registered as `GraphStore.on_change` callback. |
+| `api/decisions.py` detect/list/accept/reject | ✓ | Accept dispatches to deterministic `graph/tools.py` mutators. |
+| `api/chat.py` teacher dialogue + tool dispatch | ✓ | Routes DeepSeek tool calls to graph/integration/RAG functions. |
+| `api/ask.py` cited RAG answer | ✓ | Search → DeepSeek answer with `[textbook, chapter, pp.X-Y]` citations. |
+| `api/report.py` generate + persist report | ✓ | Topo-sort flow + LLM essence + char-count ratio. |
+| `agents/integration_agent.py`, `dialogue_agent.py`, `report_agent.py`, `tools.py` | ✓ | Real prompts, GRAPH/INTEGRATION/EVIDENCE/REPORT tool schemas. |
+| `processing/sectioning.py`, `chunking.py` | ✓ | Sentence-boundary chunking, no cross-chapter chunks. |
+| `processing/rag_index.py` | ⚠ minor | One harmless `pass` at line 59 inside `try/except` for collection-delete idempotency. |
+| `processing/graph_builder.py` | ✓ | LLM extraction per chapter, GRAIN-aware system prompt, 9 relation types. |
+| `processing/integration.py` | ✓ | Embedding-based candidate pairs (cosine ≥0.75) → DeepSeek decisions; `detect_missing_points` for prereq gaps. |
+| `processing/flow.py` | ✓ | Kahn topo sort, cycle/contradictory-prereq detection. |
+| `processing/essence.py` | ✓ | LLM essence + `calculate_compression_ratio`. |
+| `graph/store.py` NetworkX + JSON + operation log + `on_change` callback | ✓ | `commit()` is the single mutation barrier. |
+| `graph/tools.py` deterministic mutators | ✓ | `merge_nodes`, `split_node`, `add_edge`, `remove_edge`, `update_definition`, `restore_node`, `rebuild_scope`. |
+| `loaders/{pdf,markdown,word,excel}.py` | ✓ | All 4 formats via PyMuPDF / `python-docx` / `openpyxl`. |
+| `models/*` Pydantic via `CamelModel` | ✓ | snake_case ↔ camelCase aliasing for frontend compatibility. |
+| `tests/test_*.py` | ✓ | 9 files covering health/storage/PDF/sectioning/graph_tools/RAG/build/chat/integration. |
+
+### Frontend — substantially implemented
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Next.js 16.2.6 + React 19 + Tailwind v4 + shadcn/ui v4 (`@base-ui/react`) + react-force-graph-2d | ✓ | `package.json` deps complete. |
+| `app/page.tsx` project overview + create | ✓ | shadcn Cards, list + create form. |
+| `app/projects/[projectId]/layout.tsx` + `workspace/page.tsx` + `report/page.tsx` | ✓ | Uses Next 16 `Promise<{...}>` params (`await` in Server, `use()` in Client). |
+| `components/shell/{top-status-bar,workspace-layout}.tsx` | ✓ | 3-col grid `[332px / fluid / 374px]`. |
+| `components/materials/left-material-panel.tsx` | ✓ | Filter, upload, textbook/chapter tree. |
+| `components/graph/{graph-canvas,graph-toolbar,node-details}.tsx` | ✓ | Dynamic-imported react-force-graph-2d, custom canvas paint, highlight on click. |
+| `components/decisions/right-integration-panel.tsx` | ✓ | Decision queue with optimistic accept/reject. |
+| `components/chat/teacher-chat-console.tsx` | ✓ | Tool-call preview rows, send/ask. |
+| `components/build/bottom-progress-bar.tsx` | ✓ | 5 visible pipeline steps, chunk-size sheet for rebuild. |
+| `components/report/` | ❌ empty | Report UI lives inline in `app/projects/[projectId]/report/page.tsx`. Move to `components/report/` if it grows. |
+| `lib/api.ts`, `lib/ws.ts`, `lib/types.ts`, `lib/graph-styles.ts`, `lib/utils.ts` | ✓ | Typed REST + WebSocket; types mirror backend `CamelModel` JSON. |
+| `hooks/use-{project,materials,build,graph,decisions,chat}.ts` | ✓ | One hook per backend resource family; WebSocket cleanup wired. |
+
+### Infra
+
+| Area | Status | Notes |
+|------|--------|-------|
+| `docker-compose.yml` backend + chroma | ✓ | Frontend service is commented out — runs locally via `npm run dev` for hackathon iteration speed. |
+| `backend/Dockerfile` | ✓ | Listed in compose. |
+| `frontend/Dockerfile` | ❌ | Not yet authored. |
+| `.env` / `.env.example` | unverified | Confirm `DATA_ROOT`, `TEXTBOOKS_DIR`, all `*_API_KEY` vars exist before demo. |
+| Git commits | only 2 | `ecec890` init + `f47012e` backend review fix. The entire backend+frontend skeleton above is currently uncommitted. |
+
+### Known gaps versus PRD
+
+* `components/report/` is empty — the PRD calls for `ReportView` / `EssenceView`. Inline implementation in `report/page.tsx` is acceptable for v0.
+* Backend has no per-scope retry endpoint; rebuild = new full job. PRD's "rebuild controls for teacher feedback" is implemented at the chunking-parameter level (the BottomProgressBar sheet) but not stage-scoped.
+* No frontend `Dockerfile` — only backend is containerized. Demo path is `docker compose up` for backend+chroma + `npm run dev` for frontend.
+* `agents/tools.py` defines `revise_decision` but `api/decisions.py` does not yet expose a revise endpoint.
+
 ## Technical Notes
 
 * DeepSeek docs reference: https://api-docs.deepseek.com/zh-cn/

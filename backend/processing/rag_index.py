@@ -70,6 +70,8 @@ async def build_rag_index(project_id: str, chunks: list[Chunk]) -> dict:
     documents: list[str] = []
     all_vectors: list[list[float]] = []
 
+    skipped: list[dict] = []
+
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i + batch_size]
         texts = [c.text for c in batch]
@@ -77,8 +79,36 @@ async def build_rag_index(project_id: str, chunks: list[Chunk]) -> dict:
         try:
             vectors = await modelscope_embed(texts)
         except Exception as exc:
-            logger.error(f"Embedding batch failed at offset {i}: {exc}")
-            raise
+            logger.warning(
+                "Embedding batch failed; retrying chunks individually",
+                extra={"project_id": project_id, "offset": i, "error": str(exc)[:300]},
+            )
+            vectors = []
+            kept_batch: list[Chunk] = []
+            for chunk in batch:
+                try:
+                    vector = (await modelscope_embed([chunk.text]))[0]
+                except Exception as item_exc:
+                    skipped.append({
+                        "chunk_id": chunk.id,
+                        "textbook": chunk.textbook,
+                        "chapter": chunk.chapter,
+                        "error": str(item_exc)[:300],
+                    })
+                    logger.warning(
+                        "Skipping unembeddable chunk",
+                        extra={
+                            "project_id": project_id,
+                            "chunk_id": chunk.id,
+                            "textbook": chunk.textbook,
+                            "chapter": chunk.chapter,
+                            "error": str(item_exc)[:300],
+                        },
+                    )
+                    continue
+                kept_batch.append(chunk)
+                vectors.append(vector)
+            batch = kept_batch
 
         for chunk, vector in zip(batch, vectors):
             ids.append(chunk.id)
@@ -86,23 +116,31 @@ async def build_rag_index(project_id: str, chunks: list[Chunk]) -> dict:
             documents.append(chunk.text)
             all_vectors.append(vector)
 
-    collection.add(
-        ids=ids,
-        embeddings=all_vectors,
-        documents=documents,
-        metadatas=metadatas,
-    )
+    if all_vectors:
+        collection.add(
+            ids=ids,
+            embeddings=all_vectors,
+            documents=documents,
+            metadatas=metadatas,
+        )
 
     logger.info(
         "RAG index built",
         extra={
             "project_id": project_id,
             "chunk_count": len(chunks),
+            "indexed_count": len(ids),
+            "skipped_count": len(skipped),
             "embedding_dim": len(all_vectors[0]) if all_vectors else 0,
         },
     )
 
-    return {"indexed": len(chunks), "collection": collection_name}
+    return {
+        "indexed": len(ids),
+        "skipped": len(skipped),
+        "collection": collection_name,
+        "skippedSamples": skipped[:10],
+    }
 
 
 async def search_chunks(
