@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import math
+import re
 
 from backend.core.config import settings
 from backend.core.model_clients import modelscope_embed
@@ -155,7 +158,7 @@ async def search_chunks(
     try:
         collection = client.get_collection(collection_name)
     except Exception:
-        return []
+        return _search_lexical_chunks(project_id, query, top_k)
 
     query_vector = await modelscope_embed([query])
 
@@ -176,3 +179,60 @@ async def search_chunks(
             })
 
     return output
+
+
+def _search_lexical_chunks(project_id: str, query: str, top_k: int = 5) -> list[dict]:
+    """Fast local RAG fallback backed by chunks/rag_chunks.jsonl."""
+    chunks_path = ensure_project_dirs(project_id)["chunks"] / "rag_chunks.jsonl"
+    if not chunks_path.exists():
+        return []
+
+    query_terms = _query_terms(query)
+    if not query_terms:
+        return []
+
+    scored: list[tuple[float, dict]] = []
+    with open(chunks_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            text = item.get("text", "")
+            score = _lexical_score(text, query_terms)
+            if score > 0:
+                scored.append((score, item))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    output: list[dict] = []
+    for score, item in scored[:top_k]:
+        output.append({
+            "chunk_id": item["id"],
+            "text": item["text"],
+            "metadata": item.get("metadata", {}),
+            "score": min(0.99, score),
+        })
+    return output
+
+
+def _query_terms(query: str) -> list[str]:
+    terms = [term.lower() for term in re.findall(r"[A-Za-z0-9_]+", query) if len(term) >= 2]
+    chinese = "".join(re.findall(r"[\u4e00-\u9fff]", query))
+    terms.extend(chinese[i:i + 2] for i in range(max(len(chinese) - 1, 0)))
+    terms.extend(chinese[i:i + 3] for i in range(max(len(chinese) - 2, 0)))
+    return list(dict.fromkeys(terms))
+
+
+def _lexical_score(text: str, terms: list[str]) -> float:
+    lowered = text.lower()
+    hits = 0
+    weighted = 0.0
+    for term in terms:
+        count = lowered.count(term)
+        if count:
+            hits += 1
+            weighted += min(count, 4) * (1.5 if len(term) >= 3 else 1.0)
+    if hits == 0:
+        return 0.0
+    coverage = hits / max(len(terms), 1)
+    density = weighted / max(math.sqrt(len(text)), 1)
+    return coverage * 0.75 + density * 0.25

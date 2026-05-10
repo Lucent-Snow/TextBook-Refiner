@@ -6,7 +6,10 @@ from fastapi import APIRouter, HTTPException
 
 from backend.agents.dialogue_agent import run_dialogue_agent
 from backend.agents.tools import build_tool_definitions
+from backend.core.config import settings
 from backend.models.chat import ChatMessage, ChatRequest, MessageRole
+from backend.processing.rag_index import search_chunks
+from backend.core.model_clients import deepseek_chat
 
 router = APIRouter(prefix="/api/projects/{project_id}/chat", tags=["chat"])
 
@@ -16,6 +19,9 @@ _history: dict[str, list[dict]] = {}  # project_id -> conversation
 @router.post("")
 async def chat(project_id: str, body: ChatRequest) -> dict:
     """Send a message to the teacher dialogue agent."""
+    if settings.rag_only_mode and project_id == settings.rag_only_project_id:
+        return await _rag_only_chat(project_id, body)
+
     tools = build_tool_definitions(["graph", "integration", "evidence"])
     history = _history.setdefault(project_id, [])
 
@@ -179,3 +185,52 @@ def _summarize_tool_results(tool_results: list[dict]) -> str:
     succeeded = [r for r in tool_results if not r.get("result", {}).get("error")]
     failed = [r for r in tool_results if r.get("result", {}).get("error")]
     return f"已执行 {len(succeeded)} 个图谱工具调用，{len(failed)} 个失败。"
+
+
+async def _rag_only_chat(project_id: str, body: ChatRequest) -> dict:
+    history = _history.setdefault(project_id, [])
+    results = await search_chunks(project_id, body.message, top_k=settings.lexical_rag_top_k)
+    if not results:
+        content = "未找到相关教材内容。请确认已完成快速 RAG 索引。"
+        model_used = None
+    else:
+        context_parts = []
+        for result in results:
+            meta = result["metadata"]
+            context_parts.append(
+                f"[{meta.get('textbook', '?')}, {meta.get('chapter', '?')}, "
+                f"p.{meta.get('page_start', '?')}]\n{result['text']}"
+            )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "你是医学教材问答助手。只基于给定教材片段回答，回答要中文、直接、适合教师验收。"
+                    "每个关键结论后标注来源，例如[生理学, 第3章, p.42]。"
+                    "如果片段不足以回答，就说明证据不足。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"教材片段：\n\n{chr(10).join(context_parts)}\n\n问题：{body.message}",
+            },
+        ]
+        result = await deepseek_chat(messages=messages, max_tokens=2048)
+        content = result["content"]
+        model_used = result.get("model_used")
+
+    agent_msg = ChatMessage(
+        id=f"msg_{len(history) + 1}",
+        project_id=project_id,
+        role=MessageRole.AGENT,
+        content=content,
+        evidence=[r["chunk_id"] for r in results],
+    )
+    history.append({"role": "user", "content": body.message})
+    history.append({"role": "assistant", "content": content})
+    return {
+        "message": agent_msg.model_dump(mode="json", by_alias=True),
+        "toolCalls": [],
+        "toolResults": [],
+        "modelUsed": model_used,
+    }

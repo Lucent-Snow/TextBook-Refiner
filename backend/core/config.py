@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     kg_max_edges_per_section: int = 12
     kg_extraction_max_tokens: int = 2048
 
+    # Time-critical RAG-only mode
+    rag_only_mode: bool = False
+    rag_only_project_id: str = "proj_rag_fast"
+    lexical_rag_top_k: int = 8
+
     # ChromaDB
     chroma_host: Optional[str] = None
     chroma_port: int = 8000
