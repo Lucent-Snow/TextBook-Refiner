@@ -44,8 +44,8 @@ COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend/
 COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
 COPY --from=frontend-builder /app/frontend/public ./frontend/public
 
-# Startup script
-COPY start.sh ./
+# Entry point and startup script
+COPY app.py start.sh ./
 RUN chmod +x start.sh
 
 EXPOSE 7860
